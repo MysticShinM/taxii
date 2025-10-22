@@ -12,10 +12,8 @@ MEDALLION_CONFIG_FILE="$INSTALL_DIR/config.json"
 MEDALLION_SERVICE_FILE="/etc/systemd/system/medallion.service"
 API_ROOT="api-root-1"
 
-# Known good dependency versions
-# Medallion latest on PyPI is 3.0.0 (no 5.x exists)
+# Versions (Medallion 3.x is the latest on PyPI; 5.x does not exist)
 MEDALLION_VERSION="3.0.0"
-# Medallion 3.x pairs best with pymongo 3.x
 PYMONGO_VERSION="3.13"
 
 # ---------- helpers ----------
@@ -56,7 +54,7 @@ echo
 # ---------- inputs ----------
 get_input        "FQDN for TAXII Server" DOMAIN_NAME
 get_input        "Certbot email (for Let's Encrypt)" CERTBOT_EMAIL
-# Users (roles)
+# Users (basic auth)
 get_input        "Admin username (read+write)" ADMIN_USER "taxii-admin"
 get_secret_input "Admin password (HIDDEN)"     ADMIN_PASS
 get_input        "Push-only username (write)"  PUSH_USER  "taxii-push"
@@ -72,15 +70,9 @@ get_input "Optional MISP tag filter (e.g., tlp:white) or blank for all" FILTER_T
 get_input "How many TAXII sync jobs to create now? (0..10)" SYNC_COUNT "0"
 
 # ---------- validate ----------
-if ! [[ "$DOMAIN_NAME" =~ ^([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,}$ ]]; then
-  err "Invalid domain name."
-fi
-if ! [[ "$CERTBOT_EMAIL" =~ ^[^@]+@[^@]+\.[^@]+$ ]]; then
-  err "Invalid email address."
-fi
-if ! [[ "$SYNC_COUNT" =~ ^([0-9]|10)$ ]]; then
-  err "SYNC_COUNT must be between 0 and 10"
-fi
+[[ "$DOMAIN_NAME" =~ ^([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,}$ ]] || err "Invalid domain name."
+[[ "$CERTBOT_EMAIL" =~ ^[^@]+@[^@]+\.[^@]+$ ]] || err "Invalid email address."
+[[ "$SYNC_COUNT" =~ ^([0-9]|10)$ ]] || err "SYNC_COUNT must be between 0 and 10"
 
 # ---------- DNS sanity (optional) ----------
 if command -v dig >/dev/null 2>&1; then
@@ -131,7 +123,7 @@ sudo mkdir -p "$INSTALL_DIR"
 sudo chown -R "$MEDALLION_USER":"$MEDALLION_USER" "$INSTALL_DIR"
 sudo chmod 750 "$INSTALL_DIR"
 
-# Create venv and install Python deps AS medallion (no cd in caller shell)
+# Create venv and install Python deps AS medallion
 sudo -u "$MEDALLION_USER" bash -c "
   set -e
   python3 -m venv '$INSTALL_DIR/venv'
@@ -186,10 +178,6 @@ echo "$COLLECTION_SUMMARY"
 echo
 
 # ---------- write medallion config (Medallion 3.0 schema) ----------
-# NOTE: Medallion 3.0 expects:
-# - "users": { "user": "password", ... }
-# - "backend": { "module", "module_class", "uri" }
-# Optional "taxii" and "api_roots" are kept for convenience.
 echo "4) Writing Medallion config..."
 sudo tee "$MEDALLION_CONFIG_FILE" >/dev/null <<EOF
 {
@@ -222,7 +210,7 @@ sudo chown root:"$MEDALLION_USER" "$MEDALLION_CONFIG_FILE"
 sudo chmod 640 "$MEDALLION_CONFIG_FILE"
 echo
 
-# ---------- systemd for medallion ----------
+# ---------- systemd for medallion (uses -h/-p/-c flags) ----------
 echo "5) Systemd unit..."
 sudo tee "$MEDALLION_SERVICE_FILE" >/dev/null <<EOF
 [Unit]
@@ -235,7 +223,7 @@ User=$MEDALLION_USER
 WorkingDirectory=$INSTALL_DIR
 Environment=PATH=$INSTALL_DIR/venv/bin
 ExecStartPre=/bin/sh -c 'for i in \$(seq 1 10); do nc -z localhost 27017 && exit 0; sleep 1; done; exit 1'
-ExecStart=$INSTALL_DIR/venv/bin/medallion --host $TAXII_HOST_IP --port $TAXII_PORT --conf-file $MEDALLION_CONFIG_FILE
+ExecStart=$INSTALL_DIR/venv/bin/medallion -h $TAXII_HOST_IP -p $TAXII_PORT -c $MEDALLION_CONFIG_FILE
 Restart=on-failure
 RestartSec=2s
 TimeoutStopSec=15
@@ -284,6 +272,7 @@ server {
     listen 443 ssl http2;
     server_name $DOMAIN_NAME;
     server_tokens off;
+
     # certbot injects cert paths
     add_header X-Content-Type-Options nosniff;
     add_header X-Frame-Options DENY;
@@ -511,7 +500,6 @@ MAX_POST_BYTES="$MAX_POST"
 EOF
     sudo chmod 640 "$ENV_FILE"
 
-    # If a custom schedule was provided, create an override timer drop-in
     if [ "$SYNC_CAL" != "hourly" ]; then
       sudo mkdir -p /etc/systemd/system/taxii-sync@$i.timer.d
       sudo tee /etc/systemd/system/taxii-sync@$i.timer.d/override.conf >/dev/null <<EOF
@@ -524,7 +512,6 @@ EOF
 
     sudo systemctl daemon-reload
     sudo systemctl enable --now "taxii-sync@$i.timer"
-    # test-run once
     sudo systemctl start "taxii-sync@$i.service"
   done
 fi
