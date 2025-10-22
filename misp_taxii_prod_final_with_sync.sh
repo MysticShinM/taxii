@@ -12,7 +12,7 @@ MEDALLION_CONFIG_FILE="$INSTALL_DIR/config.json"
 MEDALLION_SERVICE_FILE="/etc/systemd/system/medallion.service"
 API_ROOT="api-root-1"
 
-# Versions (Medallion 3.x is the latest on PyPI; 5.x does not exist)
+# Versions (Medallion 3.x is latest on PyPI)
 MEDALLION_VERSION="3.0.0"
 PYMONGO_VERSION="3.13"
 
@@ -47,7 +47,7 @@ sanitize_fname() { echo "$1" | sed -e 's/[^A-Za-z0-9_.-]/_/g'; }
 [ "$EUID" -eq 0 ] && err "Please run as a sudo-capable user, not root."
 command -v sudo >/dev/null || err "'sudo' is required."
 
-echo "--- Medallion TAXII Server Installer (multi-collections, roles, sync automation) ---"
+echo "--- Medallion TAXII Server Installer (prod, Gunicorn, NGINX) ---"
 echo "DNS A record for your domain MUST point to this server's public IP."
 echo
 
@@ -123,12 +123,12 @@ sudo mkdir -p "$INSTALL_DIR"
 sudo chown -R "$MEDALLION_USER":"$MEDALLION_USER" "$INSTALL_DIR"
 sudo chmod 750 "$INSTALL_DIR"
 
-# Create venv and install Python deps AS medallion
+# Create venv and install Python deps AS medallion (incl. gunicorn)
 sudo -u "$MEDALLION_USER" bash -c "
   set -e
   python3 -m venv '$INSTALL_DIR/venv'
   '$INSTALL_DIR/venv/bin/pip' install --upgrade pip wheel setuptools
-  '$INSTALL_DIR/venv/bin/pip' install 'medallion==${MEDALLION_VERSION}' 'pymongo~=${PYMONGO_VERSION}' requests
+  '$INSTALL_DIR/venv/bin/pip' install 'medallion==${MEDALLION_VERSION}' 'pymongo~=${PYMONGO_VERSION}' requests 'gunicorn>=21,<24'
 "
 echo
 
@@ -210,20 +210,22 @@ sudo chown root:"$MEDALLION_USER" "$MEDALLION_CONFIG_FILE"
 sudo chmod 640 "$MEDALLION_CONFIG_FILE"
 echo
 
-# ---------- systemd for medallion (uses -h/-p/-c flags) ----------
-echo "5) Systemd unit..."
+# ---------- systemd for medallion (Gunicorn WSGI) ----------
+echo "5) Systemd unit (Gunicorn WSGI)..."
 sudo tee "$MEDALLION_SERVICE_FILE" >/dev/null <<EOF
 [Unit]
-Description=Medallion TAXII 2.1 Server
+Description=Medallion TAXII 2.1 Server (Gunicorn)
 After=network.target mongod.service network-online.target
 Wants=network-online.target
 
 [Service]
 User=$MEDALLION_USER
 WorkingDirectory=$INSTALL_DIR
-Environment=PATH=$INSTALL_DIR/venv/bin
+Environment=PATH=$INSTALL_DIR/venv/bin MEDALLION_CONFFILE=$MEDALLION_CONFIG_FILE
+# Wait for MongoDB port before starting
 ExecStartPre=/bin/sh -c 'for i in \$(seq 1 10); do nc -z localhost 27017 && exit 0; sleep 1; done; exit 1'
-ExecStart=$INSTALL_DIR/venv/bin/medallion -h $TAXII_HOST_IP -p $TAXII_PORT -c $MEDALLION_CONFIG_FILE
+# Gunicorn workers and bind
+ExecStart=$INSTALL_DIR/venv/bin/gunicorn -w 3 --timeout 180 -b $TAXII_HOST_IP:$TAXII_PORT "medallion.app:create_app()"
 Restart=on-failure
 RestartSec=2s
 TimeoutStopSec=15
