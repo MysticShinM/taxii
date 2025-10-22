@@ -13,8 +13,10 @@ MEDALLION_SERVICE_FILE="/etc/systemd/system/medallion.service"
 API_ROOT="api-root-1"
 
 # Known good dependency versions
-MEDALLION_VERSION="5.0"
-PYMONGO_VERSION="4.6"
+# Medallion latest on PyPI is 3.0.0 (no 5.x exists)
+MEDALLION_VERSION="3.0.0"
+# Medallion 3.x pairs best with pymongo 3.x
+PYMONGO_VERSION="3.13"
 
 # ---------- helpers ----------
 get_input() {
@@ -134,7 +136,7 @@ sudo -u "$MEDALLION_USER" bash -c "
   set -e
   python3 -m venv '$INSTALL_DIR/venv'
   '$INSTALL_DIR/venv/bin/pip' install --upgrade pip wheel setuptools
-  '$INSTALL_DIR/venv/bin/pip' install 'medallion~=$MEDALLION_VERSION' 'pymongo~=$PYMONGO_VERSION' requests
+  '$INSTALL_DIR/venv/bin/pip' install 'medallion==${MEDALLION_VERSION}' 'pymongo~=${PYMONGO_VERSION}' requests
 "
 echo
 
@@ -183,16 +185,26 @@ echo "Collections to create:"
 echo "$COLLECTION_SUMMARY"
 echo
 
-# ---------- write medallion config ----------
+# ---------- write medallion config (Medallion 3.0 schema) ----------
+# NOTE: Medallion 3.0 expects:
+# - "users": { "user": "password", ... }
+# - "backend": { "module", "module_class", "uri" }
+# Optional "taxii" and "api_roots" are kept for convenience.
 echo "4) Writing Medallion config..."
 sudo tee "$MEDALLION_CONFIG_FILE" >/dev/null <<EOF
 {
   "users": {
-    "$ADMIN_USER": { "password": "$ADMIN_PASS", "permissions": { "admin": true, "taxii": true } },
-    "$PUSH_USER":  { "password": "$PUSH_PASS",  "permissions": { "taxii": true } },
-    "$PULL_USER":  { "password": "$PULL_PASS",  "permissions": { "taxii": true } }
+    "$ADMIN_USER": "$ADMIN_PASS",
+    "$PUSH_USER":  "$PUSH_PASS",
+    "$PULL_USER":  "$PULL_PASS"
+  },
+  "backend": {
+    "module": "medallion.backends.mongodb_backend",
+    "module_class": "MongoBackend",
+    "uri": "mongodb://localhost:27017/"
   },
   "taxii": {
+    "max_page_size": 100,
     "api_roots": [
       {
         "name": "$API_ROOT",
@@ -202,16 +214,7 @@ sudo tee "$MEDALLION_CONFIG_FILE" >/dev/null <<EOF
         "versions": ["taxii-2.1"],
         "collections": [ $COLLECTIONS_JSON ]
       }
-    ],
-    "persistence_api": {
-      "module": "medallion.backends.mongodb_backend",
-      "class": "MongoBackend",
-      "parameters": {
-        "mongo_host": "localhost",
-        "mongo_port": 27017,
-        "hashing_algorithm": "sha256"
-      }
-    }
+    ]
   }
 }
 EOF
