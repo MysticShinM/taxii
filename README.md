@@ -249,6 +249,40 @@ Provide the following to your MISP administrator:
 
 ---
 
-## 13. You’re Done! ✅
+## Creating a New Admin User on Linux
+
+This guide explains how to create a new user and grant them sudo (administrator) privileges.
+
+---
+
+### 📍 Step 1: Add a New User
+
+```bash
+adduser adminuser
+You will be prompted to enter a password and some optional user details.
+
+### 📍 Step 2: Add the User to the sudo Group
+bash
+Copy code
+usermod -aG sudo adminuser
+This grants the new user administrative (sudo) privileges.
+
+### 📍 Step 3: Switch to the New User
+bash
+Copy code
+su - adminuser
+This command switches the current session to the new user with their environment loaded.
+
+✅ Optional: Verify Sudo Access
+Once logged in as the new user, run:
+
+bash
+Copy code
+sudo whoami
+If the result is root, the configuration is successful.
+
+---
+
+## 14. You’re Done! ✅
 
 Your TAXII server is now running securely with collections, role-based access, TLS, optional auto-sync, systemd hardening, and monitoring readiness.
