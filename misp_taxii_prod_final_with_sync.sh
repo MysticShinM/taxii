@@ -96,7 +96,26 @@ echo "---------------------------------------------------------"
 echo "1) Installing core dependencies..."
 sudo apt update
 sudo apt install -y python3 python3-pip python3-venv nginx certbot python3-certbot-nginx uuid-runtime dnsutils netcat-openbsd curl
-sudo apt install -y mongodb || err "Failed to install 'mongodb' (consider 'mongodb-org' for prod)."
+
+# --- NEW MongoDB 7.0 install (Jammy repo; sudo-capable user, not root) ---
+echo "1b) Installing MongoDB 7.0 (mongodb-org) via Ubuntu Jammy repo..."
+
+# Clean up any old MongoDB repo/key that might conflict
+sudo rm -f /etc/apt/sources.list.d/mongodb-org-*.list || true
+sudo rm -f /usr/share/keyrings/mongodb-server-*.gpg || true
+
+# Import the MongoDB public GPG key
+curl -fsSL https://pgp.mongodb.com/server-7.0.asc | \
+  sudo gpg -o /usr/share/keyrings/mongodb-server-7.0.gpg --dearmor
+
+# Add the MongoDB APT repository (use jammy explicitly)
+echo "deb [arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/7.0 multiverse" | \
+  sudo tee /etc/apt/sources.list.d/mongodb-org-7.0.list >/dev/null
+
+# Update and install
+sudo apt update
+sudo apt install -y mongodb-org || err "Failed to install 'mongodb-org'."
+
 command -v mongod >/dev/null 2>&1 || err "'mongod' not found after install."
 
 sudo systemctl enable mongod || true
