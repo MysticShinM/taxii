@@ -249,25 +249,25 @@ Provide the following to your MISP administrator:
 
 ---
 
-## Creating a New Admin User on Linux
+## 13. Creating a New Admin User on Linux
 
 This guide explains how to create a new user and grant them sudo (administrator) privileges.
 
 ---
 
-### 📍 Step 1: Add a New User
+📍 Step 1: Add a New User
 
 ```bash
 adduser adminuser
 You will be prompted to enter a password and some optional user details.
 
-### 📍 Step 2: Add the User to the sudo Group
+📍 Step 2: Add the User to the sudo Group
 bash
 Copy code
 usermod -aG sudo adminuser
 This grants the new user administrative (sudo) privileges.
 
-### 📍 Step 3: Switch to the New User
+📍 Step 3: Switch to the New User
 bash
 Copy code
 su - adminuser
