@@ -1,4 +1,4 @@
-# misp_taxii_server_setup (Setup Guide for v10 Installer)
+#Misp Taxii Server Setup (Setup Guide for Installer)
 
 ## 1. Overview
 
