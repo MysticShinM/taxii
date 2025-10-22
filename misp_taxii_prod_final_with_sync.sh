@@ -95,9 +95,9 @@ echo "---------------------------------------------------------"
 # ---------- install deps ----------
 echo "1) Installing core dependencies..."
 sudo apt update
-sudo apt install -y python3 python3-pip python3-venv nginx certbot python3-certbot-nginx uuid-runtime dnsutils netcat-openbsd curl
+sudo apt install -y python3 python3-pip python3-venv nginx certbot python3-certbot-nginx uuid-runtime dnsutils netcat-openbsd curl jq
 
-# --- NEW MongoDB 7.0 install (Jammy repo; sudo-capable user, not root) ---
+# --- MongoDB 7.0 install (Jammy repo; sudo-capable user, not root) ---
 echo "1b) Installing MongoDB 7.0 (mongodb-org) via Ubuntu Jammy repo..."
 
 # Clean up any old MongoDB repo/key that might conflict
@@ -117,25 +117,25 @@ sudo apt update
 sudo apt install -y mongodb-org || err "Failed to install 'mongodb-org'."
 
 command -v mongod >/dev/null 2>&1 || err "'mongod' not found after install."
-
 sudo systemctl enable mongod || true
 sudo systemctl start  mongod || true
 echo
 
-# ---------- service user & venv ----------
-echo "2) Creating service user & Python env..."
+# ---------- service user & venv (ALL under medallion user) ----------
+echo "2) Creating service user & Python env (running commands as '$MEDALLION_USER')..."
+# Create service user and directory
 sudo useradd --system --home "$INSTALL_DIR" --shell /usr/sbin/nologin "$MEDALLION_USER" 2>/dev/null || true
 sudo mkdir -p "$INSTALL_DIR"
 sudo chown -R "$MEDALLION_USER":"$MEDALLION_USER" "$INSTALL_DIR"
 sudo chmod 750 "$INSTALL_DIR"
 
-cd "$INSTALL_DIR"
-sudo -u "$MEDALLION_USER" python3 -m venv venv
-VENV_BIN="$INSTALL_DIR/venv/bin"
-VENV_PIP="$VENV_BIN/pip"
-
-sudo -u "$MEDALLION_USER" "$VENV_PIP" install --upgrade pip wheel setuptools
-sudo -u "$MEDALLION_USER" "$VENV_PIP" install "medallion~=$MEDALLION_VERSION" "pymongo~=$PYMONGO_VERSION" requests
+# Create venv and install Python deps AS medallion (no cd in caller shell)
+sudo -u "$MEDALLION_USER" bash -c "
+  set -e
+  python3 -m venv '$INSTALL_DIR/venv'
+  '$INSTALL_DIR/venv/bin/pip' install --upgrade pip wheel setuptools
+  '$INSTALL_DIR/venv/bin/pip' install 'medallion~=$MEDALLION_VERSION' 'pymongo~=$PYMONGO_VERSION' requests
+"
 echo
 
 # ---------- collections: parse + stable IDs ----------
